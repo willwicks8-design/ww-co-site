@@ -380,21 +380,26 @@ main{padding:20px;max-width:960px;margin:0 auto}
   <!-- EDIT SWEEPSTAKE -->
   <div class="panel" id="p-create">
     <div class="slabel" style="margin-bottom:6px">Edit Sweepstake</div>
-    <div style="color:var(--muted);font-size:12px;margin-bottom:16px">Make changes below and generate a new link to replace the current one.</div>
+    <div style="color:var(--muted);font-size:12px;margin-bottom:16px">Changes save to your device instantly. To update everyone else's view, hit <strong style="color:var(--text)">Generate shareable link</strong> and resend the link to your group.</div>
     <div class="cform card">
       <label class="fl">Sweepstake name</label>
-      <input class="fi" id="c-name" placeholder="e.g. Work Group WC2026">
+      <input class="fi" id="c-name" placeholder="e.g. Work Group WC2026" oninput="markUnsaved()">
       <label class="fl">Password</label>
-      <input class="fi" id="c-pw" type="text" placeholder="e.g. golazo2026">
+      <input class="fi" id="c-pw" type="text" placeholder="e.g. golazo2026" oninput="markUnsaved()">
       <label class="fl" style="margin-bottom:10px">Participants and their teams (comma separated)</label>
       <div id="c-rows"></div>
-      <button class="ebtn" style="margin:10px 0 18px" onclick="addRow()">+ Add person</button><br>
-      <button class="pbtn" onclick="genLink()">Generate shareable link</button>
+      <button class="ebtn" style="margin:10px 0 14px" onclick="addRow()">+ Add person</button>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
+        <button class="pbtn" id="save-btn" onclick="saveChanges()" style="display:none">💾 Save changes</button>
+        <span id="save-note" style="font-size:12px;color:var(--green);display:none">✓ Saved</span>
+      </div>
+      <div style="height:0.5px;background:var(--border);margin-bottom:18px"></div>
+      <button class="pbtn" style="background:var(--bg3);color:var(--accent);border:0.5px solid rgba(245,197,24,.3)" onclick="genLink()">Generate shareable link</button>
       <div id="c-out" style="display:none">
         <div style="margin-top:20px;padding-top:20px;border-top:0.5px solid var(--border)">
           <div class="fl">Your shareable link</div>
           <div class="url-box"><span id="c-url" style="flex:1;word-break:break-all"></span><button class="cbtn" onclick="copyLink()">Copy</button></div>
-          <div style="color:var(--muted);font-size:12px;margin-top:10px">Everything is encoded in the URL. Anyone with the link needs the password to enter.</div>
+          <div style="color:var(--muted);font-size:12px;margin-top:10px">Share this with your group — opening it will update their sweep to your latest changes.</div>
         </div>
       </div>
     </div>
@@ -1347,15 +1352,26 @@ function buildGroupsFromMatches(matches){
   document.getElementById('grp-body').innerHTML=html;
 }
 
+function getTeamOwner(teamName){
+  for(const p of sweep.entries){
+    if(p.teams.some(t=>teamsMatch(t,teamName))) return p.name;
+  }
+  return null;
+}
+
 function groupCard(name,rows){
-  const allT=sweep.entries.flatMap(p=>p.teams);
   let h=`<div class="gcard"><div class="ghead">${name}</div>
   <table class="gtbl"><thead><tr><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead><tbody>`;
   rows.forEach((t,i)=>{
-    const inS=allT.some(st=>teamsMatch(t.team,st));
-    h+=`<tr class="${i<2?'q':''}"><td><span style="margin-right:5px">${getFlag(t.team)}</span>${t.team}${inS?' ⭐':''}</td>
-    <td>${t.played}</td><td>${t.won}</td><td>${t.drawn}</td><td>${t.lost}</td>
-    <td>${(t.gd||0)>=0?'+':''}${t.gd||0}</td><td style="font-weight:600">${t.pts}</td></tr>`;
+    const owner=getTeamOwner(t.team);
+    h+=`<tr class="${i<2?'q':''}" style="cursor:pointer" onclick="openTeamDetail('${t.team.replace(/'/g,"\\'")}')">
+      <td>
+        <span style="margin-right:5px">${getFlag(t.team)}</span>${t.team}
+        ${owner?`<span style="display:block;font-size:10px;color:var(--accent);font-weight:500;margin-top:1px">⭐ ${owner}</span>`:''}
+      </td>
+      <td>${t.played}</td><td>${t.won}</td><td>${t.drawn}</td><td>${t.lost}</td>
+      <td>${(t.gd||0)>=0?'+':''}${t.gd||0}</td><td style="font-weight:600">${t.pts}</td>
+    </tr>`;
   });
   return h+'</tbody></table></div>';
 }
@@ -1392,15 +1408,80 @@ function renderKO(matches){
     ms.forEach(m=>{
       const hs=m.home_score,as=m.away_score;
       const hw=hs!==null&&as!==null&&hs>as,aw=hs!==null&&as!==null&&as>hs;
+      const homeOwner=getTeamOwner(m.home);
+      const awayOwner=getTeamOwner(m.away);
       html+=`<div class="ko-m" onclick='openM(${JSON.stringify(m)})'>
-        <div class="ko-t"><span class="ko-fl">${getFlag(m.home)}</span><span class="ko-tn">${m.home||'<span class="ko-tbd">TBD</span>'}</span>${hs!==null?`<span class="ko-sc ${hw?'w':''}">${hs}</span>`:''}</div>
-        <div class="ko-t"><span class="ko-fl">${getFlag(m.away)}</span><span class="ko-tn">${m.away||'<span class="ko-tbd">TBD</span>'}</span>${as!==null?`<span class="ko-sc ${aw?'w':''}">${as}</span>`:''}</div>
+        <div class="ko-t">
+          <span class="ko-fl">${getFlag(m.home)}</span>
+          <span class="ko-tn">${m.home||'<span class="ko-tbd">TBD</span>'}</span>
+          ${homeOwner?`<span style="font-size:10px;color:var(--accent)">⭐ ${homeOwner}</span>`:''}
+          ${hs!==null?`<span class="ko-sc ${hw?'w':''}">${hs}</span>`:''}
+        </div>
+        <div class="ko-t">
+          <span class="ko-fl">${getFlag(m.away)}</span>
+          <span class="ko-tn">${m.away||'<span class="ko-tbd">TBD</span>'}</span>
+          ${awayOwner?`<span style="font-size:10px;color:var(--accent)">⭐ ${awayOwner}</span>`:''}
+          ${as!==null?`<span class="ko-sc ${aw?'w':''}">${as}</span>`:''}
+        </div>
         ${m.status==='upcoming'?`<div class="ko-when">${toAEST(m.date)}${m.venue?' · '+m.venue:''}</div>`:''}
       </div>`;
     });
     html+='</div></div>';
   });
   document.getElementById('ko-body').innerHTML=html||'<div style="color:var(--muted)">No knockout data yet.</div>';
+}
+
+// ─── TEAM DETAIL (click country in groups/knockout) ───────────────────────────
+function openTeamDetail(team){
+  const owner=getTeamOwner(team);
+  const matches=allEvents.map(parseEv).filter(m=>m&&(teamsMatch(m.home,team)||teamsMatch(m.away,team)))
+    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const played=matches.filter(m=>m.status==='finished');
+  const upcoming=matches.filter(m=>m.status==='upcoming');
+  const live=matches.filter(m=>m.status==='live');
+
+  // Build results summary
+  let w=0,d=0,l=0,gf=0,ga=0;
+  played.forEach(m=>{
+    const isH=teamsMatch(m.home,team);
+    const ts=isH?m.home_score:m.away_score, os=isH?m.away_score:m.home_score;
+    gf+=ts||0;ga+=os||0;
+    if(ts>os)w++;else if(ts===os)d++;else l++;
+  });
+
+  const matchRows=[...live,...played.reverse(),...upcoming].map(m=>{
+    const isH=teamsMatch(m.home,team);
+    const opp=isH?m.away:m.home;
+    const aest=toAEST(m.date);
+    const score=m.status==='finished'
+      ?`<strong>${isH?m.home_score:m.away_score} – ${isH?m.away_score:m.home_score}</strong>`
+      :m.status==='live'
+      ?`<span style="color:var(--green)">🟢 ${isH?m.home_score:m.away_score} – ${isH?m.away_score:m.home_score}</span>`
+      :`<span style="color:var(--muted)">${aest}</span>`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:13px;cursor:pointer" onclick="closeM();setTimeout(()=>openM(${JSON.stringify(m)}),50)">
+      <span>${getFlag(opp)} ${opp}</span>
+      <span>${score}</span>
+      <span style="font-size:11px;color:var(--muted)">${m.stage||''}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('m-title').textContent=`${getFlag(team)} ${team}`;
+  document.getElementById('m-body').innerHTML=`
+    ${owner?`<div style="color:var(--accent);font-size:13px;font-weight:500;margin-bottom:16px">⭐ Owned by ${owner}</div>`:''}
+    ${played.length?`<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+      <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;text-align:center;flex:1">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Record</div>
+        <div style="font-weight:600">${w}W ${d}D ${l}L</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;text-align:center;flex:1">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Goals</div>
+        <div style="font-weight:600">${gf} scored · ${ga} conceded</div>
+      </div>
+    </div>`:''}
+    <div class="slabel" style="margin-bottom:8px">All fixtures</div>
+    ${matchRows||`<div style="color:var(--muted);font-size:13px">No fixtures found yet.</div>`}
+  `;
+  document.getElementById('ov').classList.add('on');
 }
 
 // ─── MATCH MODAL ─────────────────────────────────────────────────────────────
@@ -1533,11 +1614,16 @@ function initCreate(){
   document.getElementById('c-name').value=sweep.name||'';
   document.getElementById('c-pw').value=sweep.pw||DEFAULT_PW;
   sweep.entries.forEach(e=>addRow(e.name,e.teams.join(', ')));
+  // Reset save state — no unsaved changes on initial load
+  document.getElementById('save-btn').style.display='none';
+  document.getElementById('save-note').style.display='none';
 }
 function addRow(name='',teams=''){
   const r=document.createElement('div');r.className='erow';
-  r.innerHTML=`<input class="fi" style="margin:0" placeholder="Name" value="${name}"><input class="fi" style="margin:0" placeholder="Team1, Team2..." value="${teams}"><button class="ebtn" onclick="this.parentElement.remove()">✕</button>`;
+  r.innerHTML=`<input class="fi" style="margin:0" placeholder="Name" value="${name}"><input class="fi" style="margin:0" placeholder="Team1, Team2..." value="${teams}"><button class="ebtn" onclick="this.parentElement.remove();markUnsaved()">✕</button>`;
+  r.querySelectorAll('input').forEach(i=>i.addEventListener('input',markUnsaved));
   document.getElementById('c-rows').appendChild(r);
+  markUnsaved();
 }
 function genLink(){
   const name=document.getElementById('c-name').value||'WC2026';
@@ -1555,7 +1641,29 @@ function genLink(){
   document.getElementById('c-out').style.display='';
   toast('Link generated!');
 }
-function copyLink(){navigator.clipboard.writeText(document.getElementById('c-url').textContent).then(()=>toast('Copied!'));}
+function markUnsaved(){
+  document.getElementById('save-btn').style.display='';
+  document.getElementById('save-note').style.display='none';
+}
+function saveChanges(){
+  const name=document.getElementById('c-name').value.trim()||sweep.name;
+  const pw=document.getElementById('c-pw').value.trim();
+  const entries=[];
+  document.querySelectorAll('#c-rows .erow').forEach(r=>{
+    const ins=r.querySelectorAll('input');
+    const n=ins[0].value.trim(),ts=ins[1].value.split(',').map(t=>t.trim()).filter(Boolean);
+    if(n&&ts.length)entries.push({name:n,teams:ts});
+  });
+  if(!entries.length){toast('Add at least one participant!');return;}
+  sweep={...sweep,name,pw,entries};
+  if(sweep.code) saveSweepByCode(sweep.code,sweep);
+  document.getElementById('sweep-label').textContent=name;
+  renderTeams();
+  document.getElementById('save-btn').style.display='none';
+  document.getElementById('save-note').style.display='';
+  setTimeout(()=>document.getElementById('save-note').style.display='none',3000);
+  toast('Changes saved!');
+}
 
 // ─── DELETE SWEEP ─────────────────────────────────────────────────────────────
 function deleteSweepStep1(){
